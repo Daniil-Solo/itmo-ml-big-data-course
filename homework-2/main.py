@@ -1,16 +1,19 @@
 import datetime
 from pyspark.ml.evaluation import RegressionEvaluator
 from pyspark.ml.feature import VectorAssembler, StandardScaler, StringIndexer, OneHotEncoder
-from pyspark.ml.regression import LinearRegression, RandomForestRegressor
+from pyspark.ml.regression import RandomForestRegressor
 from pyspark.sql import SparkSession, Column
 from pyspark.sql.functions import col, when
 from pyspark.sql.types import IntegerType
+from pyspark.ml import Pipeline
 
-
+# Constants for data and models
 DATA_PATH = "train.csv"
+TEST_SIZE = 0.2
 CURRENT_YEAR = datetime.datetime.now().year
 SEED = 42
-TEST_SIZE = 0.2
+
+# Column names
 TO_SCALE_FEATURES = ["LotArea", "GarageArea", "PoolArea", "1stFlrSF", "2ndFlrSF", "Age"]
 OTHER_FEATURES = [
     "OverallQual", "OverallCond", "ExterQual", "BsmtCond", "HeatingQC", "KitchenQual", "HasAllUtils",
@@ -85,78 +88,70 @@ spark_df = (
             .otherwise(False)
         )
     )
-)
-
-spark_df = (
-    spark_df
     .withColumn("ExterQual", get_numeric_quality("ExterQual"))
     .withColumn("BsmtCond", get_numeric_quality("BsmtCond"))
     .withColumn("HeatingQC", get_numeric_quality("HeatingQC"))
     .withColumn("KitchenQual", get_numeric_quality("KitchenQual"))
     .withColumn("HasCentralAir", col("CentralAir").startswith("Y"))
+    .withColumn("WasReconstructed", col("YearRemodAdd") != col("YearBuilt"))
+    .withColumn("Age", CURRENT_YEAR - col("YearBuilt"))
 )
+print(spark_df.select(*TO_SCALE_FEATURES, *OTHER_FEATURES, TARGET_COLUMN).show(5, truncate=False))
 
-spark_df = (
-    spark_df
-    .withColumn(
-        "WasReconstructed", col("YearRemodAdd") != col("YearBuilt")
-    )
-    .withColumn(
-        "Age", col("YearBuilt") * -1 + CURRENT_YEAR
-    )
-)
-
-# # Random Splitting
-# train_spark_df, test_spark_df = spark_df.randomSplit(weights=[1-TEST_SIZE, TEST_SIZE], seed=SEED)
+# Random Splitting
+train_spark_df, test_spark_df = spark_df.randomSplit(weights=[1 - TEST_SIZE, TEST_SIZE], seed=SEED)
 
 # Scaling
 assembler_for_scaling_features = VectorAssembler(
     inputCols=TO_SCALE_FEATURES, outputCol=FEATURES_FOR_SCALING_COLUMN
 )
-spark_df = assembler_for_scaling_features.transform(spark_df)
-
 scaler = StandardScaler(
     inputCol=FEATURES_FOR_SCALING_COLUMN, outputCol=SCALED_FEATURES_COLUMN,
     withMean=True, withStd=True
 )
-scaler_model = scaler.fit(spark_df)
-spark_df = scaler_model.transform(spark_df)
 
-# OHE district
+# OHE for district
 district_indexer = StringIndexer(
     inputCol=DISTRICT_COLUMN, outputCol=DISTRICT_INDEX_COLUMN
 )
-district_indexer_model = district_indexer.fit(spark_df)
-spark_df = district_indexer_model.transform(spark_df)
-
 district_ohe = OneHotEncoder(
     inputCol=DISTRICT_INDEX_COLUMN, outputCol=DISTRICT_OHE_FEATURES_COLUMN
 )
-district_ohe_model = district_ohe.fit(spark_df)
-spark_df = district_ohe_model.transform(spark_df)
 
-# UNION
+# Union features
 union_assembler = VectorAssembler(
     inputCols=[SCALED_FEATURES_COLUMN, DISTRICT_OHE_FEATURES_COLUMN] + OTHER_FEATURES,
     outputCol=FEATURES_COLUMN
 )
-spark_df = union_assembler.transform(spark_df)
 
+# Model
+rf_model = RandomForestRegressor(featuresCol=FEATURES_COLUMN, labelCol=TARGET_COLUMN,
+                                 predictionCol=RF_PREDICTION_COLUMN, seed=SEED)
 
-print(spark_df.select(*TO_SCALE_FEATURES, *OTHER_FEATURES, TARGET_COLUMN).show(5, truncate=False))
+# Pipeline
+pipeline = Pipeline(
+    stages=[
+        assembler_for_scaling_features,
+        scaler,
+        district_indexer,
+        district_ohe,
+        union_assembler,
+        rf_model
+    ]
+)
+pipeline_model = pipeline.fit(train_spark_df)
+train_predictions_df = pipeline_model.transform(train_spark_df)
+test_predictions_df = pipeline_model.transform(test_spark_df)
 
+# Evaluating
+rf_train_metric = (
+    RegressionEvaluator(labelCol=TARGET_COLUMN, predictionCol=RF_PREDICTION_COLUMN, metricName="rmse")
+    .evaluate(train_predictions_df)
+)
+rf_test_metric = (
+    RegressionEvaluator(labelCol=TARGET_COLUMN, predictionCol=RF_PREDICTION_COLUMN, metricName="rmse")
+    .evaluate(test_predictions_df)
+)
 
-lr = LinearRegression(featuresCol=FEATURES_COLUMN, labelCol=TARGET_COLUMN, predictionCol=LR_PREDICTION_COLUMN)
-lr_model = lr.fit(spark_df)
-spark_df = lr_model.transform(spark_df)
-
-rf = RandomForestRegressor(featuresCol=FEATURES_COLUMN, labelCol=TARGET_COLUMN, predictionCol=RF_PREDICTION_COLUMN)
-rf_model = rf.fit(spark_df)
-spark_df = rf_model.transform(spark_df)
-
-lr_value = RegressionEvaluator(labelCol=TARGET_COLUMN, predictionCol=LR_PREDICTION_COLUMN, metricName="rmse").evaluate(spark_df)
-rf_value = RegressionEvaluator(labelCol=TARGET_COLUMN, predictionCol=RF_PREDICTION_COLUMN, metricName="rmse").evaluate(spark_df)
-
-
-print("Linear Regression - rMSE:", lr_value)
-print("Random ForestRegressor Regression - rMSE:", rf_value)
+print("Random ForestRegressor - rMSE on train:", round(rf_train_metric, 1))
+print("Random ForestRegressor - rMSE on test:", round(rf_test_metric, 1))
