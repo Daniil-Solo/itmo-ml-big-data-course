@@ -174,22 +174,26 @@ def evaluate_pipeline(
     return train_metric, test_metric
 
 
-# Создание Spark-сессии
-spark = (
-    SparkSession.builder
-    .appName("House Prices")
-    .master("local")
-    .getOrCreate()
-)
+if __name__ == "__main__":
+    # Создание Spark-сессии
+    spark = (
+        SparkSession.builder
+        .appName("House Prices")
+        .master("local")
+        .getOrCreate()
+    )
 
-# Работа с датафреймом
-spark_df = spark.read.format("csv").option("header", True).load(DATA_PATH)
-spark_df = select_fields(spark_df)
-spark_df = transform_features(spark_df)
-spark_df.select(*TO_SCALE_FEATURES, *OTHER_FEATURES, TARGET_COLUMN).show(5, truncate=False)
+    # Работа с датафреймом
+    spark_df = spark.read.format("csv").option("header", True).load(DATA_PATH)
+    spark_df = select_fields(spark_df)
+    spark_df = transform_features(spark_df)
+    spark_df.select(*TO_SCALE_FEATURES, *OTHER_FEATURES, TARGET_COLUMN).show(5, truncate=False)
 
-# Обучение пайплайна обработки данных
-train_spark_df, test_spark_df = spark_df.randomSplit(weights=[1 - TEST_SIZE, TEST_SIZE], seed=SEED)
-train_value, test_value = evaluate_pipeline(create_pipeline(), train_spark_df, test_spark_df, "rmse")
-print(f"Random ForestRegressor - rMSE on train: {round(train_value, 1)}")
-print(f"Random ForestRegressor - rMSE on test: {round(test_value, 1)}")
+    # Обучение пайплайна обработки данных
+    train_spark_df, test_spark_df = spark_df.randomSplit(weights=[1 - TEST_SIZE, TEST_SIZE], seed=SEED)
+    train_value, test_value = evaluate_pipeline(create_pipeline(), train_spark_df, test_spark_df, "rmse")
+    print(f"Random ForestRegressor - rMSE on train: {round(train_value, 1)}")
+    print(f"Random ForestRegressor - rMSE on test: {round(test_value, 1)}")
+
+    # Остановка сессии
+    spark.stop()
