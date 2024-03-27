@@ -1,0 +1,16 @@
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+24/03/27 12:45:25 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
++-------+----------+--------+--------+--------+---+-----------+-----------+---------+--------+---------+-----------+-----------+---------+-------------+----------------+---------+
+|LotArea|GarageArea|PoolArea|1stFlrSF|2ndFlrSF|Age|OverallQual|OverallCond|ExterQual|BsmtCond|HeatingQC|KitchenQual|HasAllUtils|IsFor1Fam|HasCentralAir|WasReconstructed|SalePrice|
++-------+----------+--------+--------+--------+---+-----------+-----------+---------+--------+---------+-----------+-----------+---------+-------------+----------------+---------+
+|8450   |548       |0       |856     |854     |21 |7          |5          |4        |3       |5        |4          |true       |true     |true         |false           |208500   |
+|9600   |460       |0       |1262    |0       |48 |6          |8          |3        |3       |5        |3          |true       |true     |true         |false           |181500   |
+|11250  |608       |0       |920     |866     |23 |7          |5          |4        |3       |5        |4          |true       |true     |true         |true            |223500   |
+|9550   |642       |0       |961     |756     |109|7          |5          |3        |4       |4        |4          |true       |true     |true         |true            |140000   |
+|14260  |836       |0       |1145    |1053    |24 |8          |5          |4        |3       |5        |4          |true       |true     |true         |false           |250000   |
++-------+----------+--------+--------+--------+---+-----------+-----------+---------+--------+---------+-----------+-----------+---------+-------------+----------------+---------+
+only showing top 5 rows
+
+Random ForestRegressor - rMSE on train: 29036.5
+Random ForestRegressor - rMSE on test: 39975.5
